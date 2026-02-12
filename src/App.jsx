@@ -3,10 +3,12 @@ import { useState, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatPanel from './components/ChatPanel'
 import ModelSelector from './components/ModelSelector'
+import { generateAST } from '../ast/astRouter.js'
 
 // Static model configuration
 const AVAILABLE_MODELS = [
   { id: 'gemini', name: 'Gemini', color: 'bg-green-600' },
+  { id: 'openrouter', name: 'OpenRouter', color: 'bg-orange-600' },
   { id: 'gpt4', name: 'GPT-4', color: 'bg-indigo-600' },
   { id: 'claude', name: 'Claude', color: 'bg-purple-600' },
   { id: 'llama', name: 'Llama 2', color: 'bg-blue-600' },
@@ -59,22 +61,65 @@ async function callGemini(prompt) {
   }
 }
 
+async function callOpenRouter(prompt) {
+  const apiKey = import.meta.env.VITE_OPENROUTER_KEY
+  
+  if (!apiKey) {
+    return 'Error: OpenRouter API key not configured. Please set VITE_OPENROUTER_KEY in your .env file.'
+  }
+
+  try {
+    const response = await fetch(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.origin,
+          'X-Title': 'Multi-LLM Chat'
+        },
+        body: JSON.stringify({
+          model: 'openrouter/free',
+          messages: [
+            {
+              role: 'user',
+              content: prompt
+            }
+          ]
+        })
+      }
+    )
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData?.error?.message || `API Error: ${response.status}`)
+    }
+
+    const data = await response.json()
+    return data.choices?.[0]?.message?.content || 'No response received from OpenRouter.'
+  } catch (error) {
+    console.error('OpenRouter API Error:', error)
+    return `Error: ${error.message}`
+  }
+}
+
 // ========================================
-// Currently only Gemini is operational
-// TODO: Add other models
+// Currently Gemini and OpenRouter are operational
 // ========================================
 
 async function getModelResponse(modelName, userInput) {
   switch (modelName) {
     case 'Gemini':
-      // ONLY working model - real API call
       return await callGemini(userInput)
+    
+    case 'OpenRouter':
+      return await callOpenRouter(userInput)
     
     case 'GPT-4':
     case 'Claude':
     case 'Llama 2':
       // Placeholder for future implementation
-      // TODO: Replace with actual API integrations
       return 'Thank you for asking. This model is not operational yet.'
     
     default:
@@ -132,6 +177,9 @@ export default function App() {
   const handleSendMessage = useCallback(async (content) => {
     if (!content.trim() || selectedModels.length === 0) return
 
+    // Generate AST for the user's input
+    const { language, ast } = generateAST(content)
+
     // Add user message
     setMessages(prev => ({
       ...prev,
@@ -154,29 +202,34 @@ export default function App() {
 
     try {
       // ========================================
-      // Parallel Model Execution
-      // All selected models are called simultaneously using Promise.all
-      // Responses are collected and rendered in the existing UI layout
+      // Parallel Model Execution with AST
+      // Generate AST and send to both Gemini and OpenRouter
       // ========================================
       
+      // Create enhanced prompt with AST
+      const enhancedPrompt = language !== 'none' && language !== 'unknown'
+        ? `${content}\n\n${ast}\n\nPlease analyze the code above along with its AST structure.`
+        : content;
+
       const modelPromises = selectedModels.map(async (modelName) => {
-        const response = await getModelResponse(modelName, content)
-        return { modelName, response }
+        const response = await getModelResponse(modelName, enhancedPrompt)
+        return { modelName, response, ast, language }
       })
 
       const results = await Promise.all(modelPromises)
 
-      // Add all model responses to messages
-      // The existing UI layout handles multi-column rendering automatically
+      // Add all model responses to messages with AST info
       setMessages(prev => ({
         ...prev,
         [currentChatId]: [
           ...prev[currentChatId],
-          ...results.map(({ modelName, response }, index) => ({
+          ...results.map(({ modelName, response, ast, language }, index) => ({
             id: `${Date.now()}-${index}`,
             role: 'assistant',
             content: response,
             model: modelName,
+            ast: language !== 'none' && language !== 'unknown' ? ast : null,
+            language,
             timestamp: Date.now(),
           }))
         ]

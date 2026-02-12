@@ -1,8 +1,9 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 
 const ChatMessage = memo(function ChatMessage({ message, index }) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
+  const [showAST, setShowAST] = useState(false)
 
   return (
     <div
@@ -21,7 +22,9 @@ const ChatMessage = memo(function ChatMessage({ message, index }) {
               ? 'bg-purple-600 text-white'
               : message.model === 'Llama 2'
               ? 'bg-blue-600 text-white'
-              : 'bg-orange-600 text-white'
+              : message.model === 'OpenRouter'
+              ? 'bg-orange-600 text-white'
+              : 'bg-green-600 text-white'
           }`}>
             {message.model ? message.model.charAt(0) : '🤖'}
           </div>
@@ -38,9 +41,33 @@ const ChatMessage = memo(function ChatMessage({ message, index }) {
       >
         <p className="text-sm leading-relaxed whitespace-pre-wrap">{message.content}</p>
 
-        {/* Model Badge for Assistant Messages */}
+        {/* Model Badge and AST Info for Assistant Messages */}
         {isAssistant && message.model && (
-          <p className="text-xs mt-2 opacity-70 font-medium">{message.model}</p>
+          <div className="mt-3 pt-3 border-t border-slate-700/50">
+            <div className="flex items-center justify-between">
+              <p className="text-xs opacity-70 font-medium">{message.model}</p>
+              {message.ast && (
+                <button
+                  onClick={() => setShowAST(!showAST)}
+                  className="text-xs px-2 py-1 rounded bg-slate-700/50 hover:bg-slate-700 transition-colors"
+                >
+                  {showAST ? 'Hide' : 'Show'} AST
+                </button>
+              )}
+            </div>
+            
+            {message.language && message.language !== 'none' && (
+              <p className="text-xs opacity-60 mt-1">
+                Language: {message.language}
+              </p>
+            )}
+
+            {showAST && message.ast && (
+              <div className="mt-2 p-2 rounded bg-slate-900/50 text-xs font-mono overflow-x-auto">
+                <pre className="whitespace-pre-wrap text-slate-300">{message.ast}</pre>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -57,6 +84,7 @@ const ChatMessage = memo(function ChatMessage({ message, index }) {
 })
 
 export default ChatMessage
+
 
 
 
