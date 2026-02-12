@@ -200,5 +200,3 @@ const reader = response.body.getReader()
 - [Vite Guide](https://vitejs.dev/guide/)
 
 ---
-
-Built with ❤️ for modern web development.
