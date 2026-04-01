@@ -75,8 +75,7 @@ const Sidebar = memo(function Sidebar({
 
       {/* Footer */}
       <div className="border-t border-slate-800 p-3 text-xs text-slate-500">
-        <p>Intelligent Code Explainer</p>
-        {/* <p className="mt-1">Powered by React & Tailwind</p> */}
+        <p>ICUL — Code Explainer</p>
       </div>
     </div>
   )

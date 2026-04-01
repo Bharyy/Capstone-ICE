@@ -49,3 +49,83 @@ button:focus,
 input:focus {
   @apply outline-none ring-2 ring-indigo-500;
 }
+
+/* Markdown prose styling for assistant messages */
+.prose-custom {
+  @apply text-sm leading-relaxed text-slate-50;
+}
+
+.prose-custom h1,
+.prose-custom h2,
+.prose-custom h3 {
+  @apply font-semibold text-slate-100 mt-4 mb-2;
+}
+.prose-custom h1 { @apply text-lg; }
+.prose-custom h2 { @apply text-base; }
+.prose-custom h3 { @apply text-sm; }
+
+.prose-custom h2:first-child,
+.prose-custom h3:first-child {
+  @apply mt-0;
+}
+
+.prose-custom p {
+  @apply my-2;
+}
+
+.prose-custom ul,
+.prose-custom ol {
+  @apply my-2 pl-5 space-y-1;
+}
+.prose-custom ul { list-style-type: disc; }
+.prose-custom ol { list-style-type: decimal; }
+
+.prose-custom li {
+  @apply text-slate-200;
+}
+
+.prose-custom strong {
+  @apply font-semibold text-slate-100;
+}
+
+.prose-custom em {
+  @apply italic text-slate-300;
+}
+
+.prose-custom a {
+  @apply text-indigo-400 underline hover:text-indigo-300;
+}
+
+.prose-custom hr {
+  @apply my-4 border-slate-700;
+}
+
+/* Inline code */
+.prose-custom code:not(pre code) {
+  @apply px-1.5 py-0.5 rounded bg-slate-700/60 text-indigo-300 text-xs font-mono;
+}
+
+/* Code blocks */
+.prose-custom pre {
+  @apply my-3 p-3 rounded-lg bg-slate-950/80 border border-slate-700/50 overflow-x-auto;
+}
+
+.prose-custom pre code {
+  @apply text-xs font-mono text-slate-300 leading-relaxed;
+}
+
+/* Tables */
+.prose-custom table {
+  @apply w-full my-3 text-xs;
+}
+.prose-custom th {
+  @apply text-left py-1.5 px-2 bg-slate-700/40 text-slate-300 font-medium border-b border-slate-600;
+}
+.prose-custom td {
+  @apply py-1.5 px-2 border-b border-slate-700/50 text-slate-300;
+}
+
+/* Blockquotes */
+.prose-custom blockquote {
+  @apply my-2 pl-3 border-l-2 border-indigo-500/40 text-slate-400 italic;
+}

@@ -1,11 +1,11 @@
-import { Menu, X, Plus, Trash2 } from 'lucide-react'
+import { Menu, X, Plus } from 'lucide-react'
 import { useState, useCallback } from 'react'
 import Sidebar from './components/Sidebar'
 import ChatPanel from './components/ChatPanel'
 import ModelSelector from './components/ModelSelector'
-import { generateAST } from '../ast/astRouter.js'
+import { explainCode } from './api/client.js'
 
-// Static model configuration
+// Static model configuration (display only — actual LLM calls happen server-side)
 const AVAILABLE_MODELS = [
   { id: 'gemini', name: 'Gemini', color: 'bg-green-600' },
   { id: 'openrouter', name: 'OpenRouter', color: 'bg-orange-600' },
@@ -13,119 +13,6 @@ const AVAILABLE_MODELS = [
   { id: 'claude', name: 'Claude', color: 'bg-purple-600' },
   { id: 'llama', name: 'Llama 2', color: 'bg-blue-600' },
 ]
-
-// ========================================
-// In production, API calls should go through your backend
-// to protect API keys and implement rate limiting
-// ========================================
-
-async function callGemini(prompt) {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY
-  
-  if (!apiKey) {
-    return 'Error: Gemini API key not configured. Please set VITE_GEMINI_API_KEY in your .env file.'
-  }
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          contents: [
-            {
-              parts: [
-                {
-                  text: prompt
-                }
-              ]
-            }
-          ]
-        })
-      }
-    )
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData?.error?.message || `API Error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    return data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response received from Gemini.'
-  } catch (error) {
-    console.error('Gemini API Error:', error)
-    return `Error: ${error.message}`
-  }
-}
-
-async function callOpenRouter(prompt) {
-  const apiKey = import.meta.env.VITE_OPENROUTER_KEY
-  
-  if (!apiKey) {
-    return 'Error: OpenRouter API key not configured. Please set VITE_OPENROUTER_KEY in your .env file.'
-  }
-
-  try {
-    const response = await fetch(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': window.location.origin,
-          'X-Title': 'Multi-LLM Chat'
-        },
-        body: JSON.stringify({
-          model: 'openrouter/free',
-          messages: [
-            {
-              role: 'user',
-              content: prompt
-            }
-          ]
-        })
-      }
-    )
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}))
-      throw new Error(errorData?.error?.message || `API Error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    return data.choices?.[0]?.message?.content || 'No response received from OpenRouter.'
-  } catch (error) {
-    console.error('OpenRouter API Error:', error)
-    return `Error: ${error.message}`
-  }
-}
-
-// ========================================
-// Currently Gemini and OpenRouter are operational
-// ========================================
-
-async function getModelResponse(modelName, userInput) {
-  switch (modelName) {
-    case 'Gemini':
-      return await callGemini(userInput)
-    
-    case 'OpenRouter':
-      return await callOpenRouter(userInput)
-    
-    case 'GPT-4':
-    case 'Claude':
-    case 'Llama 2':
-      // Placeholder for future implementation
-      return 'Thank you for asking. This model is not operational yet.'
-    
-    default:
-      return 'Unknown model selected.'
-  }
-}
 
 export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -138,13 +25,14 @@ export default function App() {
       {
         id: '1',
         role: 'assistant',
-        content: 'Hello! I\'m your multi-LLM assistant. You can select multiple models and chat with them simultaneously. How can I help you today?',
+        content: 'Hello! I\'m your multi-LLM code explainer. Paste some code and I\'ll analyze it using AST parsing and an ensemble of 3 models. How can I help you today?',
         timestamp: Date.now() - 3600000,
       }
     ]
   })
   const [selectedModels, setSelectedModels] = useState(['Gemini'])
   const [loading, setLoading] = useState(false)
+  const [astMode, setAstMode] = useState('with_ast')
 
   const createNewChat = useCallback(() => {
     const newId = Date.now().toString()
@@ -165,7 +53,7 @@ export default function App() {
       delete updated[chatId]
       return updated
     })
-    
+
     if (currentChatId === chatId) {
       const remainingChats = chats.filter(chat => chat.id !== chatId)
       if (remainingChats.length > 0) {
@@ -176,9 +64,6 @@ export default function App() {
 
   const handleSendMessage = useCallback(async (content) => {
     if (!content.trim() || selectedModels.length === 0) return
-
-    // Generate AST for the user's input
-    const { language, ast } = generateAST(content)
 
     // Add user message
     setMessages(prev => ({
@@ -201,42 +86,39 @@ export default function App() {
     setLoading(true)
 
     try {
-      // ========================================
-      // Parallel Model Execution with AST
-      // Generate AST and send to both Gemini and OpenRouter
-      // ========================================
-      
-      // Create enhanced prompt with AST
-      const enhancedPrompt = language !== 'none' && language !== 'unknown'
-        ? `${content}\n\n${ast}\n\nPlease analyze the code above along with its AST structure.`
-        : content;
+      // Call backend ensemble pipeline
+      const result = await explainCode(content, astMode)
 
-      const modelPromises = selectedModels.map(async (modelName) => {
-        const response = await getModelResponse(modelName, enhancedPrompt)
-        return { modelName, response, ast, language }
-      })
+      // The ensemble winner is the primary response
+      const winnerOutput = result.model_outputs[result.ensemble.winnerIndex]
+      const primaryContent = winnerOutput?.text || 'No response received.'
 
-      const results = await Promise.all(modelPromises)
-
-      // Add all model responses to messages with AST info
+      // Add ensemble response as a single assistant message with debug data attached
       setMessages(prev => ({
         ...prev,
         [currentChatId]: [
           ...prev[currentChatId],
-          ...results.map(({ modelName, response, ast, language }, index) => ({
-            id: `${Date.now()}-${index}`,
+          {
+            id: `${Date.now()}-ensemble`,
             role: 'assistant',
-            content: response,
-            model: modelName,
-            ast: language !== 'none' && language !== 'unknown' ? ast : null,
-            language,
+            content: primaryContent,
+            model: `Ensemble (${result.ensemble.winner})`,
             timestamp: Date.now(),
-          }))
+            // Debug data for the DebugPanel
+            debug: {
+              language: result.language,
+              ast: result.ast,
+              prompt_sent: result.prompt_sent,
+              model_outputs: result.model_outputs,
+              ensemble: result.ensemble,
+              confidence: result.confidence,
+              mode: astMode,
+            },
+          }
         ]
       }))
     } catch (error) {
-      console.error('Error getting model responses:', error)
-      // Add error message
+      console.error('Error getting response:', error)
       setMessages(prev => ({
         ...prev,
         [currentChatId]: [...prev[currentChatId], {
@@ -250,7 +132,7 @@ export default function App() {
     } finally {
       setLoading(false)
     }
-  }, [currentChatId, selectedModels])
+  }, [currentChatId, selectedModels, astMode])
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-50">
@@ -281,7 +163,7 @@ export default function App() {
             {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
 
-          <h1 className="text-lg font-semibold hidden md:block">Multi-LLM Chat</h1>
+          <h1 className="text-lg font-semibold hidden md:block">ICUL — Intelligent Code Explainer</h1>
 
           <div className="flex-1" />
 
@@ -301,6 +183,8 @@ export default function App() {
             onSendMessage={handleSendMessage}
             loading={loading}
             selectedModels={selectedModels}
+            astMode={astMode}
+            onAstModeChange={setAstMode}
           />
 
           {/* Model Selector Sidebar */}
@@ -338,5 +222,3 @@ export default function App() {
     </div>
   )
 }
-
-
