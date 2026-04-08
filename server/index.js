@@ -13,3 +13,4 @@ app.use('/api', router);
 app.listen(PORT, () => {
   console.log(`ICUL server running on http://localhost:${PORT}`);
 });
+
